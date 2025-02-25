@@ -1,27 +1,33 @@
-import { selectPeers, useHMSStore, useHMSActions } from "@100mslive/react-sdk";
+import { selectPeers, useHMSStore } from "@100mslive/react-sdk";
 import Peer from "./Peer";
+import Footer from "./Footer";
 
 const Conference = () => {
   const peers = useHMSStore(selectPeers);
-  const hmsActions = useHMSActions();
-
-  const handleEndCall = async () => {
-    await hmsActions.leave();
-  };
 
   return (
-    <div className="flex flex-col items-center p-4 bg-gray-100 min-h-screen">
-      <h2 className="text-2xl font-bold mb-4">Conference</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl">
-        {peers.map((peer) => (
-          <Peer key={peer.id} peer={peer} className="p-4 bg-white shadow rounded-lg" />
-        ))}
+    <div className="fixed inset-0 flex flex-col bg-black text-white">
+      
+      {/* Video Container */}
+      <div className="flex-grow relative flex items-center justify-center">
+        {/* Main Video */}
+        {peers.length > 0 && (
+          <div className="w-full h-full flex items-center justify-center">
+            <Peer key={peers[0].id} peer={peers[0]} isMain={true} />
+          </div>
+        )}
+
+        {/* Mini Video for Other Participants */}
+        {peers.length > 1 && (
+          <div className="absolute bottom-5 right-5 w-40 h-24 bg-gray-900 rounded-lg overflow-hidden shadow-lg">
+            <Peer key={peers[1].id} peer={peers[1]} isMini={true} />
+          </div>
+        )}
       </div>
-      <button 
-        onClick={handleEndCall} 
-        className="mt-6 px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all">
-        End Call
-      </button>
+
+      {/* Footer Controls */}
+      <Footer />
+      
     </div>
   );
 };
