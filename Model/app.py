@@ -1,10 +1,18 @@
 from crewai import Agent, Task, Crew, Process
 from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
+import scipy.io.wavfile as wav
+import sounddevice as sd
+from gtts import gTTS
+import pygame
+import whisper
+import fitz
 import os
-import fitz  # PyMuPDF
-# import re
 
+import warnings
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+warnings.simplefilter("ignore", category=FutureWarning)
+
+from dotenv import load_dotenv
 load_dotenv()
 
 def read_pdf_and_extract_links(file_path):
@@ -65,14 +73,7 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
-# Define AI Agents
-# resume_analyzer = Agent(
-#     role="Resume Analyzer",
-#     goal="Summarize key skills, experience, and education from the resume",
-#     backstory="You're an expert in parsing and analyzing resumes to extract structured insights.",
-#     llm=llm
-# )
-
+# Crews
 question_generator = Agent(
     role="Interview Question Generator",
     goal="Generate tailored interview questions based on the resume",
@@ -94,13 +95,7 @@ response_analyzer = Agent(
     llm=llm
 )
 
-# Define Tasks
-# extract_resume_data = Task(
-#     description="Summarize key skills, experience, and education from the resume {data}.",
-#     expected_output="Structured resume summary.",
-#     agent=resume_analyzer,
-# )
-
+# Tasks
 prepare_questions = Task(
     description=(
         "Generate a single, direct interview question based on the resume {data} and the candidate's previous answers. "
@@ -125,13 +120,7 @@ analyze_responses = Task(
     agent=response_analyzer,
 )
 
-# Create Crews
-# resume_crew = Crew(
-#     agents=[resume_analyzer],
-#     tasks=[extract_resume_data],
-#     process=Process.sequential,
-# )
-
+# Crew
 question_crew = Crew(
     agents=[question_generator],
     tasks=[prepare_questions],
@@ -153,6 +142,46 @@ response_crew = Crew(
 # result = crew.kickoff(inputs={"resume": resume_text})
 # print("CrewAI Process Result:", result)
 
+# AI Interviewer talking
+def text_to_speech(question):
+    tts = gTTS(question, lang='en', slow=False)
+    audio_path = "output.mp3"
+    tts.save(audio_path)
+
+    pygame.mixer.init()
+
+    pygame.mixer.music.load(audio_path)
+    pygame.mixer.music.play()
+
+    # Wait until the audio finishes playing
+    while pygame.mixer.music.get_busy():
+        pygame.time.Clock().tick(10)
+
+    # Quit pygame mixer
+    pygame.mixer.quit()
+    os.remove(audio_path)
+
+# Function to record audio
+def record_audio_to_text(duration=5, sample_rate=16000):
+    print("Candiadate: 🎙️")
+    audio_data = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float32')
+    sd.wait()
+    print("Recording complete. ✅")
+
+    # Save audio as WAV file
+    audio_filename = "recorded_audio.wav"
+    wav.write(audio_filename, sample_rate, audio_data)
+    print(f"Audio saved as {audio_filename}")
+    
+    # Load Whisper model
+    model = whisper.load_model("base")  # You can also use 'tiny', 'small', 'medium', 'large'
+
+    print("Transcribing... 📝")
+    result = model.transcribe(audio_filename)
+    print("\nTranscription: ")
+    os.remove(audio_filename)
+    return result["text"]
+
 # Interactive Interview Function
 def interactive_interview(resume_data):
     """Conducts an interactive interview using CrewAI with structured questioning and feedback."""
@@ -165,16 +194,17 @@ def interactive_interview(resume_data):
         questions = question_crew.kickoff(
                         inputs={
                             "data": f"Resume details: {resume_data}. Previous responses: {conversation_history}. "
-                                    "Provide the next question only, without any additional descriptions or meta-comments."
+                                "Provide the next question only, without any additional descriptions or meta-comments."
                         }
                     )
 
         question = interview_crew.kickoff(inputs={"data": questions})
         
         print(f"AI Interviewer: {question}")
+        text_to_speech(question)
 
-        # Get user response
-        user_response = input("Your answer: ")
+        user_response = record_audio_to_text()
+        print(user_response)
 
         if user_response.lower() in ["exit", "quit", "stop"]:
             print("AI Interviewer: Thank you for your time! The interview is now complete.")
@@ -186,7 +216,6 @@ def interactive_interview(resume_data):
 
         conversation_history += f"\nQ: {question}\nA: {user_response}\nFeedback: {feedback}\n"
 
-        # Store transcript
         interview_transcript.append({"question": question, "answer": user_response, "feedback": feedback})
 
     return interview_transcript
@@ -195,6 +224,7 @@ def interactive_interview(resume_data):
 # Start AI-driven interview
 interview_transcript = interactive_interview(resume_text)
 print("Final Interview Transcript:", interview_transcript)
+
 # The course which I have been continuously working on is data dtructure and algorithm. I faced many challenges in building logics to solve the DSA prob
 # lems but with time and dedication and help from some youtube videos I have been good at solving easy and medium level coding problems. I have good knowledge and in
 # terest in machine learning as well. I have recently developed a deep learning model for crop disease detection which takes image of plant leaves as image to claasi
