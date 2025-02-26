@@ -66,12 +66,12 @@ llm = ChatGoogleGenerativeAI(
 )
 
 # Define AI Agents
-resume_analyzer = Agent(
-    role="Resume Analyzer",
-    goal="Summarize key skills, experience, and education from the resume",
-    backstory="You're an expert in parsing and analyzing resumes to extract structured insights.",
-    llm=llm
-)
+# resume_analyzer = Agent(
+#     role="Resume Analyzer",
+#     goal="Summarize key skills, experience, and education from the resume",
+#     backstory="You're an expert in parsing and analyzing resumes to extract structured insights.",
+#     llm=llm
+# )
 
 question_generator = Agent(
     role="Interview Question Generator",
@@ -159,10 +159,9 @@ def interactive_interview(resume_data):
     print("AI Interviewer: Let's begin the interview!")
     interview_transcript = []
     
-    conversation_history = ""  # Maintain history of questions & responses
+    conversation_history = ""
 
     while True:
-        # Generate the next interview question dynamically
         questions = question_crew.kickoff(
                         inputs={
                             "data": f"Resume details: {resume_data}. Previous responses: {conversation_history}. "
@@ -185,7 +184,6 @@ def interactive_interview(resume_data):
         feedback = response_crew.kickoff(inputs={"data": f"Candidate's response: {user_response}. Provide feedback."})
         print(f"AI Interviewer Feedback: {feedback}")
 
-        # Store conversation history (to be used in next question generation)
         conversation_history += f"\nQ: {question}\nA: {user_response}\nFeedback: {feedback}\n"
 
         # Store transcript
