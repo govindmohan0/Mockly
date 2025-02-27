@@ -19,11 +19,35 @@ export const doSignInWithEmailAndPassword = (email, password) => {
 
 export const doSignInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
+  
+  try {
+    const result = await signInWithPopup(auth, provider);
+    
+    // Get the signed-in user info
+    const user = result.user;
+    const email = user.email;
 
-  // add user to firestore
+    console.log("User Email:", email);
+    console.log("User:", user);
+
+    // Send email to backend for storing in MongoDB
+    const response = await fetch("http://localhost:5000/api/auth", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+    console.log("Response from backend:", data);
+  } catch (error) {
+    console.error("Error during authentication:", error);
+  }
+
+  // Add user to Firestore (if required) but using mongodb
 };
+
 
 export const doSignOut = () => {
   return auth.signOut();
