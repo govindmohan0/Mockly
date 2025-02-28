@@ -6,7 +6,6 @@ from tempfile import NamedTemporaryFile
 import os
 import fitz 
 
-# Load environment variables
 load_dotenv()
 
 from crewai import Task, Agent
@@ -15,8 +14,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 
-
-# Allow frontend origin (Adjust for production!)
 origins = [
     "http://localhost:5173",  # Your React frontend
     "http://127.0.0.1:5173"
@@ -38,14 +35,6 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.5,
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
-
-# Define AI Agents
-# resume_analyzer = Agent(
-#     role="Resume Analyzer",
-#     goal="Summarize key skills, experience, and education from the resume",
-#     backstory="You're an expert in parsing and analyzing resumes to extract structured insights.",
-#     llm=llm
-# )
 
 question_generator = Agent(
     role="Interview Question Generator",

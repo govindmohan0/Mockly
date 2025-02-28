@@ -2,10 +2,11 @@ import React, { useState } from 'react'
 import { Navigate, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../contexts/authContext'
 import { doCreateUserWithEmailAndPassword } from '../../../firebase/auth'
+import axios from 'axios'
 
 const Register = () => {
 
-    const navigate = useNavigate()
+    // const navigate = useNavigate()
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -13,7 +14,7 @@ const Register = () => {
     const [isRegistering, setIsRegistering] = useState(false)
     const [errorMessage, setErrorMessage] = useState('')
 
-    const { userLoggedIn } = useAuth()
+    const { userLoggedIn, setUserLoggedIn, setCurrentUser } = useAuth()
 
     const onSubmit = async (e) => {
         e.preventDefault()
@@ -22,6 +23,44 @@ const Register = () => {
             await doCreateUserWithEmailAndPassword(email, password)
         }
     }
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if(password !== confirmPassword) {
+            setErrorMessage("Passwords do not match.")
+            return;
+        }
+        const data = { email, password };
+
+        setErrorMessage(""); // Reset errors before the request
+
+        try {
+            const response = await axios.post(
+                `http://localhost:5000/register`,
+                data,
+                { headers: { "Content-Type": "application/json" } }
+            );
+
+            // Save user and token information to localStorage after success
+            if (response.data) {
+                setCurrentUser({email: email, displayName: email});
+                console.log("Data:", response.data);
+                localStorage.setItem("user", JSON.stringify(response.data));
+                const token = response.data.token;
+                if (token) localStorage.setItem("token", token);
+
+                setUserLoggedIn(true);
+                // Reset form fields after a successful action
+                setEmail("");
+                setPassword("");
+            }
+        } catch (error) {
+            console.error("Authentication failed:", error.response?.data || error.message);
+            setErrorMessage(
+                error.response?.data?.message || "An error occurred. Please try again."
+            );
+        }
+    };
 
     return (
         <>
@@ -88,6 +127,7 @@ const Register = () => {
                             type="submit"
                             disabled={isRegistering}
                             className={`w-full px-4 py-2 text-white font-medium rounded-lg ${isRegistering ? 'bg-gray-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-xl transition duration-300'}`}
+                            onClick={handleSubmit}
                         >
                             {isRegistering ? 'Signing Up...' : 'Sign Up'}
                         </button>

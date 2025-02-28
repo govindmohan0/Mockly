@@ -27,8 +27,8 @@ export const doSignInWithGoogle = async () => {
     const user = result.user;
     const email = user.email;
 
-    console.log("User Email:", email);
-    console.log("User:", user);
+    // console.log("User Email:", email);
+    // console.log("User:", user);
 
     // Send email to backend for storing in MongoDB
     const response = await fetch("http://localhost:5000/api/auth", {

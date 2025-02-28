@@ -2,9 +2,10 @@ import React, { useState } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import { doSignInWithEmailAndPassword, doSignInWithGoogle } from '../../../firebase/auth'
 import { useAuth } from '../../../contexts/authContext'
+import axios from 'axios'
 
 const Login = () => {
-    const { userLoggedIn } = useAuth()
+    const { userLoggedIn, setUserLoggedIn, setCurrentUser } = useAuth()
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -29,6 +30,36 @@ const Login = () => {
             })
         }
     }
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        setIsSigningIn(true);
+        setErrorMessage(""); // Reset error messages
+
+        try {
+            const response = await axios.post(
+                `http://localhost:5000/login`,
+                { email, password },
+                { headers: { "Content-Type": "application/json" } }
+            );
+
+            if (response.data?.token) {
+                setCurrentUser({email: email, displayName: email});
+                localStorage.setItem("authToken", response.data.token);
+                setUserLoggedIn(true); // Update authentication state
+            } else {
+                throw new Error("Invalid response from server");
+            }
+        } catch (error) {
+            console.error("Authentication failed:", error.response?.data || error.message);
+            setErrorMessage(
+                error.response?.data?.message || "An error occurred. Please try again."
+            );
+        } finally {
+            setIsSigningIn(false);
+        }
+    };
 
     return (
         <div>
@@ -80,11 +111,12 @@ const Login = () => {
                             type="submit"
                             disabled={isSigningIn}
                             className={`w-full px-4 py-2 text-white font-medium rounded-lg ${isSigningIn ? 'bg-gray-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-xl transition duration-300'}`}
+                            onClick={handleSubmit}
                         >
                             {isSigningIn ? 'Signing In...' : 'Sign In'}
                         </button>
                     </form>
-                    <p className="text-center text-sm">Don't have an account? <Link to={'/register'} className="hover:underline font-bold">Sign up</Link></p>
+                    <p className="text-center text-sm">Don&apos;t have an account? <Link to={'/register'} className="hover:underline font-bold">Sign up</Link></p>
                     <div className='flex flex-row text-center w-full'>
                         <div className='border-b-2 mb-2.5 mr-2 w-full'></div><div className='text-sm font-bold w-fit'>OR</div><div className='border-b-2 mb-2.5 ml-2 w-full'></div>
                     </div>
