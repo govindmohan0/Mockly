@@ -62,7 +62,7 @@ def read_pdf_and_extract_links(file_path):
         print(f"An error occurred: {e}")
         return None, []
         
-file_path = "CVResume.pdf"
+file_path = r"C:/Users/hkanv/Desktop/Govind Mohan Shah Resume.pdf"
 resume_text, resume_links = read_pdf_and_extract_links(file_path)
 # print(resume_text)
 
