@@ -1,146 +1,89 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-from crewai import Crew
-from dotenv import load_dotenv
-from tempfile import NamedTemporaryFile
+from gtts import gTTS
+import whisper
+import fitz
 import os
-import fitz 
+from pymongo import MongoClient
+from tempfile import NamedTemporaryFile
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from crew import question_crew, response_crew  
+from fastapi.staticfiles import StaticFiles
+import shutil
 
 load_dotenv()
 
-from crewai import Task, Agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+MONGO_URI = os.getenv("MONGO_URI")
+client = MongoClient(MONGO_URI)
+db = client.ai_interview
+collection = db.transcripts
 
-from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
-
-origins = [
-    "http://localhost:5173",  # Your React frontend
-    "http://127.0.0.1:5173"
-]
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allow specific origins
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
-)
-
-
-# Initialize Gemini AI Model
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
-    verbose=False,
-    temperature=0.5,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-question_generator = Agent(
-    role="Interview Question Generator",
-    goal="Generate tailored interview questions based on the resume",
-    backstory="You specialize in crafting personalized interview questions for candidates based on their resumes.",
-    llm=llm
-)
-
-response_analyzer = Agent(
-    role="Response Analyzer",
-    goal="Analyze responses and provide constructive feedback",
-    backstory="You evaluate candidate responses, highlighting strengths and weaknesses for better assessment.",
-    llm=llm
-)
-
-# Define Tasks
-prepare_questions = Task(
-    description="Generate a single interview question based on the {data}.",
-    expected_output="A single interview question.",
-    agent=question_generator,
-)
-
-analyze_responses = Task(
-    description="Analyze the candidate's response {data} and provide a concise analysis.",
-    expected_output="Concise interview feedback.",
-    agent=response_analyzer,
-)
-
-# Create Crews
-question_crew = Crew(
-    agents=[question_generator],
-    tasks=[prepare_questions],
-)
-
-response_crew = Crew(
-    agents=[response_analyzer],
-    tasks=[analyze_responses],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 class ResumeInput(BaseModel):
-    data: str  # Ensure the frontend sends `data` as a JSON field
+    data: str  
 
-def extract_resume_text_and_links(pdf_file):
-    """Extract text and GitHub links from a resume PDF."""
-    try:
-        doc = fitz.open(pdf_file)
-        text = ""
-        github_links = []
-
-        for page in doc:
-            text += page.get_text()
-            for link in page.get_links():
-                url = link.get("uri", "")
-                if "github.com" in url:
-                    github_links.append({"platform": "GitHub", "url": url})
-
-        return text, github_links
-
-    except Exception as e:
-        print(f"Error processing PDF: {e}")
-        return None, []
-
+def extract_resume_text(pdf_file):
+    doc = fitz.open(pdf_file)
+    text = "".join(page.get_text() for page in doc)
+    return text
 
 @app.post("/upload_resume/")
 async def upload_resume(file: UploadFile = File(...)):
-    """Handles resume upload and extracts key data."""
     with NamedTemporaryFile(delete=False) as temp_file:
         temp_file.write(await file.read())
         temp_file_path = temp_file.name
 
-    resume_text, resume_links = extract_resume_text_and_links(temp_file_path)
+    resume_text = extract_resume_text(temp_file_path)
     os.remove(temp_file_path)
 
-    if resume_text:
-        return {"message": "Resume processed", "parsed_data": resume_text, "links": resume_links}
-    else:
-        return {"message": "Failed to extract resume content"}
-
+    return {"parsed_data": resume_text}
 
 @app.post("/generate_questions/")
 async def generate_questions(resume_data: ResumeInput):
-    """Generates interview questions based on the resume."""
-    result = question_crew.kickoff(inputs={"data": resume_data})
-    return {"questions": result}
+    if not resume_data.data:
+        raise HTTPException(status_code=400, detail="Resume data is required")
 
+    question = question_crew.kickoff(inputs={"data": resume_data.data})  # AI generates question
 
-class ResponseModel(BaseModel):
-    question: str
-    response: str
+    # Ensure 'static/' directory exists
+    os.makedirs("static", exist_ok=True)
 
+    # Save MP3 file in the static folder
+    audio_path = f"static/question_audio.mp3"
+    gTTS(text=question, lang='en').save(audio_path)
 
-@app.post("/evaluate_response/")
-async def evaluate_response(response_model: ResponseModel):
-    """Evaluates interview responses and provides AI feedback."""
-    try:
-        evaluation = response_crew.kickoff(inputs={"data": response_model.response})
-        next_question = question_crew.kickoff(inputs={"data": f"Resume details: {response_model.response}. Previous responses: {response_model.question}. "
-                                        "Provide the next question only, without any additional descriptions or meta-comments."})
-        return {"evaluation": evaluation, "next_question": next_question}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing response: {str(e)}")
+    # Return URL pointing to static file
+    return {"question": question, "audio_url": f"http://localhost:8000/static/question_audio.mp3"}
 
+@app.post("/process_audio/")
+async def process_audio(file: UploadFile = File(...), question: str = None, background_tasks: BackgroundTasks = None):
+    model = whisper.load_model("base")
+    with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+        temp_audio.write(await file.read())
+        temp_audio_path = temp_audio.name
+
+    transcription = model.transcribe(temp_audio_path)["text"]
+    os.remove(temp_audio_path)
+
+    evaluation = response_crew.kickoff(inputs={"data": transcription})
+    feedback_audio_path = "feedback_audio.mp3"
+    gTTS(text=evaluation, lang='en').save(feedback_audio_path)
+    background_tasks.add_task(os.remove, feedback_audio_path)
+
+    return JSONResponse(content={"transcription": transcription, "feedback_audio": feedback_audio_path})
 
 @app.get("/")
 def root():
     return {"message": "AI Interview System is running!"}
-
-# run using:- uvicorn main:app --reload
-# or fastapi dev main.py
